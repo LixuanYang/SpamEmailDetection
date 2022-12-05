@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: A template yaml for email spam check
+Parameters:
+  SageMakerEndpoint:
+    Type: String
+    Description: SageMaker Endpoint URL
+    Default: sms-spam-classifier-mxnet-2022-11-20-05-57-04-342
+  ReceiptRuleSetNameHW3:
+    Type: String
+    Default: HW3-RULESET
+Resources:
+  S3StoreEmails:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    DependsOn: BucketPermission
+    Properties:
+      AccessControl: PublicRead
+      BucketName: lixuanhw3-emailsbucket
+      NotificationConfiguration:
+        LambdaConfigurations:
+        - Event: 's3:ObjectCreated:Put'
+          Function: !GetAtt hw3lf1CF.Arn
+
+  EmailbucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: lixuanhw3-emailsbucket
+      PolicyDocument: {
+        "Version": "2012-10-17",
+        "Statement": [
+          {
+            "Sid": "AllowSESPuts",
+            "Effect": "Allow",
+            "Principal": {
+              "Service": "ses.amazonaws.com"
+            },
+            "Action": "s3:PutObject",
+            "Resource": "arn:aws:s3:::lixuanhw3-emailsbucket/*",
+            "Condition": {
+              "StringEquals": {
+                "aws:Referer": "121063675658"
+              }
+            }
+          }
+        ]
+      }
+
+  BucketPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref hw3lf1CF
+      Principal: s3.amazonaws.com
+      SourceAccount: "121063675658"
+      SourceArn: "arn:aws:s3:::lixuanhw3-emailsbucket"
+
+  IAMRolehw3lf1CF:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName: "hw3-spam-lfcf"  
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: "Allow"
+          Principal:
+            Service:
+            - "lambda.amazonaws.com"
+          Action: "sts:AssumeRole"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonSESFullAccess
+        - arn:aws:iam::aws:policy/AmazonSageMakerFullAccess
+        - arn:aws:iam::aws:policy/AWSCloudFormationFullAccess
+        - arn:aws:iam::121063675658:policy/createlog-cloudformation-hw3lambda
+
+  hw3lf1CF:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+          S3Bucket: hw3-cf-lambdazip
+          S3Key: "LFCF-HW3.zip"
+      FunctionName: lf-hw3
+      Handler: lf-hw3.lambda_handler
+      Role: !GetAtt IAMRolehw3lf1CF.Arn
+      Runtime: python3.9
+      Environment:
+        Variables:
+          ENDPOINT_NAME: !Ref SageMakerEndpoint 
+      Layers:
+        - arn:aws:lambda:us-east-1:770693421928:layer:Klayers-p39-numpy:9
+  
+  SESRuleSetCF:
+    Type: 'AWS::SES::ReceiptRuleSet'
+    Properties:
+      RuleSetName: !Ref ReceiptRuleSetNameHW3
+  
+  SESRule:
+    Type: 'AWS::SES::ReceiptRule'
+    Properties:
+      Rule:
+        Name: 'hw3-receiptrule-cloudformation'
+        Recipients:
+          - "lixuanyanghw3.info"
+        Actions:
+          - S3Action:
+              BucketName: lixuanhw3-emailsbucket
+        Enabled: true
+      RuleSetName: !Ref SESRuleSetCF
